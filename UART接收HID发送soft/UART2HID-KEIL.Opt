@@ -13,8 +13,9 @@
 Target (Target 1), 0x0000 // Tools: 'MCS-51'
 GRPOPT 1,(Source Group 1),1,0,0
 
-OPTFFF 1,1,1,0,0,0,0,0,<.\F330_UART.c><F330_UART.c> 
+OPTFFF 1,1,1,1,0,0,0,0,<.\F330_UART.c><F330_UART.c> 
 
+ExtF <F:\MOUSE\MOUSE\vargitUART2HIC\UART½ÓÊÕHID·¢ËÍsoft\F330_UART.H> 1,9,0,{ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 }
 
 TARGOPT 1, (Target 1)
  CLK51=25000000
