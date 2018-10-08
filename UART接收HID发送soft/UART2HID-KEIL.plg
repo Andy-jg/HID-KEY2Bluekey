@@ -1,0 +1,16 @@
+<html>
+<body>
+<pre>
+<h1>礦ision Build Log</h1>
+<h2>Project:</h2>
+F:\MOUSE\MOUSE\vargitUART2HIC\UART2HID程序\UART接收HID发送\UART2HID-KEIL.uvproj
+Project File Date:  <unknown>
+
+<h2>Output:</h2>
+Build target 'Target 1'
+compiling F330_UART.c...
+F330_UART.C(134): warning C280: 'i': unreferenced local variable
+linking...
+Program Size: data=74.0 xdata=0 code=1532
+creating hex file from "UART2HID-KEIL"...
+"UART2HID-KEIL" - 0 Error(s), 1 Warning(s).

@@ -1,0 +1,1 @@
+"C:\Documents and Settings\Administrator\桌面\SI4432+F330\UART接收HID发送\F330_UART.obj"  TO "C:\Documents and Settings\Administrator\桌面\SI4432+F330\UART接收HID发送\UART2HID-IDE" RS(256) PL(68) PW(78) 

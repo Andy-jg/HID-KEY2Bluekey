@@ -1,0 +1,675 @@
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 1   
+
+
+C51 COMPILER V7.00, COMPILATION OF MODULE F330_UART
+OBJECT MODULE PLACED IN F330_UART.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE F330_UART.c BROWSE DEBUG OBJECTEXTEND
+
+stmt level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          // Includes
+   3          //-----------------------------------------------------------------------------
+   4          
+   5          #include <c8051f330.h>                 // SFR declarations
+   6          #include <stdio.h>
+   7          #include "mytype.h"
+   8          #include "config.h"
+   9          
+  10          static uint16 idle_timeout_time=300;//无按键按下超时,5min
+  11          static uint16 idle_timeout=0;//无按键按下超时
+  12          static uint8 reconn_flag=0;//重新连接标志
+  13          static uint8 poweroff_flag=0;//关机标志
+  14          static uint8 bat_val=0;//电池电压
+  15          static uint8 adc_flag=0;//电池电压测试标志，10min
+  16          static uint16 adc_timeout=0;//电压测试时间
+  17          uint8 code batt[16]={0x27,0x1E,0x1F,0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x05,0x04,0x17,0x10,0x0C,0x11};//0~
+             -9,bat,min
+  18          
+  19          #define vcc_on  1
+  20          #define vcc_off 0
+  21          #define bl_on   0
+  22          #define bl_off  1
+  23          //-----------------------------------------------------------------------------
+  24          // Global CONSTANTS
+  25          //-----------------------------------------------------------------------------
+  26          
+  27          #define SYSTEMCLOCK      6125000           // SYSCLK frequency in Hz
+  28          #define BAUDRATE         57600           // Baud rate of UART in bps
+  29          
+  30          #define TIMER_PRESCALER            48  // Based on Timer CKCON settings
+  31          
+  32          // There are SYSTEMCLOCK/TIMER_PRESCALER timer ticks per second, so
+  33          // SYSCLK/TIMER_PRESCALER/1000 timer ticks per millisecond.
+  34          #define TIMER_TICKS_PER_MS  SYSTEMCLOCK/TIMER_PRESCALER/1000
+  35          
+  36          // Note: TIMER_TICKS_PER_MS should not exceed 255 (0xFF) for the 8-bit timer
+  37          
+  38          #define AUX1     TIMER_TICKS_PER_MS
+  39          #define AUX2     -AUX1
+  40          
+  41          #define TIMER0_RELOAD_HIGH       AUX2  // Reload value for Timer0 high byte
+  42          
+  43          //-----------------------------------------------------------------------------
+  44          // Function PROTOTYPES
+  45          //-----------------------------------------------------------------------------
+  46          void ADC0_Init(void);
+  47          void SYSCLK_Init (void);
+  48          void UART0_Init (void);
+  49          void PORT_Init (void);
+  50          void Timer0_Init (void);
+  51          void KEY_VAL(uint8 tmp);
+  52          void delay_ms(uint16 ms);
+  53          //-----------------------------------------------------------------------------
+  54          // Global Variables
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 2   
+
+  55          //-----------------------------------------------------------------------------
+  56          static uint8 tx_buf[12]={0x0C,0x00,0xA1,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};//HID发送缓冲区
+  57          static uint8 tx_count;//发送字节数，实际发送12个字节
+  58          uint8 fn_flag;//Fn键按下状态
+  59          #define FnDown  0x00
+  60          #define FnUp    0x01
+  61          
+  62          //key
+  63          #define LCtrl   0x14
+  64          #define LShift  0x12
+  65          #define LAlt    0x10
+  66          #define LGui    0x07
+  67          //#define RCtrl 0x??
+  68          #define RShift  0x59
+  69          #define RAlt    0x13
+  70          //#define RGui  0x??
+  71          #define Fn              0x02
+  72          //fn_key,用于测试。实际使用时查表
+  73          #define Home    0x5E
+  74          #define End             0x2F
+  75          #define PgUp    0x28
+  76          #define PgDown  0x60
+  77          #define Esc             0x0E
+  78          #define F1              0x16
+  79          #define F3              0x26
+  80          
+  81          //uart缓冲区使用变量
+  82          #define UART_BUFFERSIZE 32
+  83          uint8 UART_Buffer[UART_BUFFERSIZE];
+  84          uint8 UART_Buffer_Size = 0;
+  85          uint8 UART_Input_First = 0;
+  86          uint8 UART_Output_First = 0;
+  87          uint8 TX_Ready =1;
+  88          static uint8 Byte;
+  89          
+  90          //KEY
+  91          uint8 code key_code[128]={
+  92          
+  93          0x00,0x00,0x65,0x00,0x00,0x00,0x00,0xE3,0x29,0x00,0x00,0x00,0x00,0x2B,0x35,0x00,
+  94          
+  95          0xE2,0x00,0xE1,0xE6,0xE0,0x14,0x1E,0x00,0x00,0x00,0x1D,0x16,0x04,0x1A,0x1F,0x00,
+  96          
+  97          0x00,0x06,0x1B,0x07,0x08,0x21,0x20,0x00,0x52,0x00,0x19,0x09,0x17,0x15,0x22,0x4F,
+  98          
+  99          0x00,0x11,0x05,0x0B,0x0A,0x1C,0x23,0x00,0x00,0x00,0x10,0x0D,0x18,0x24,0x25,0x00,
+ 100          
+ 101          0x00,0x36,0x0E,0x0C,0x12,0x27,0x26,0x00,0x00,0x37,0x38,0x0F,0x33,0x13,0x2D,0x00,
+ 102          
+ 103          0x00,0x00,0x34,0x00,0x2F,0x2E,0x00,0x00,0x39,0xE5,0x28,0x30,0x2C,0x31,0x50,0x00,
+ 104          
+ 105          0x51,0x00,0x00,0x00,0x00,0x00,0x4C,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+ 106          
+ 107          0x00,0x2A,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+ 108          
+ 109          //Fn_KEY
+ 110          uint8 code fn_key_code[128]={
+ 111          
+ 112          0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x29,0x00,
+ 113          
+ 114          0x00,0x00,0x00,0x00,0x00,0x00,0x3A,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x3B,0x00,
+ 115          
+ 116          0x00,0x00,0x00,0x00,0x00,0x3D,0x3C,0x00,0x4B,0x00,0x00,0x00,0x00,0x00,0x3E,0x4D,
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 3   
+
+ 117          
+ 118          0x00,0x00,0x00,0x00,0x00,0x00,0x3F,0x00,0x00,0x00,0x00,0x00,0x00,0x40,0x41,0x00,
+ 119          
+ 120          0x00,0x00,0x00,0x00,0x00,0x43,0x42,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x44,0x00,
+ 121          
+ 122          0x00,0x00,0x00,0x00,0x00,0x45,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x4A,0x00,
+ 123          
+ 124          0x4E,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+ 125          
+ 126          0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,};
+ 127          
+ 128          //-----------------------------------------------------------------------------
+ 129          // MAIN Routine
+ 130          //-----------------------------------------------------------------------------
+ 131          
+ 132          void main (void)
+ 133          {
+ 134   1              uint8 i,tmp;
+ 135   1              PCA0MD &= ~0x40;                    // WDTE = 0 (clear watchdog timer
+ 136   1                                                 // enable)
+ 137   1              PORT_Init();                        // Initialize Port I/O
+ 138   1              SYSCLK_Init ();                     // Initialize Oscillator
+ 139   1              UART0_Init();
+ 140   1              Timer0_Init ();                  //1ms定时器
+ 141   1      
+ 142   1              vcc_ctrl        =       vcc_on;//打开系统总电源,1开0关
+ 143   1              bl_conn_ctrl=   0;//根据外部按钮的状态控制蓝牙模块
+ 144   1              zb_led2         =       0;//1为亮，0为灭，LED2未连接
+ 145   1              //bl_state      为蓝牙模块状态输入
+ 146   1              //key_int0  按键中断及开机
+ 147   1              //zb_adc0   电池电压判断
+ 148   1              idle_timeout=0;
+ 149   1              reconn_flag=0;//重新连接标志
+ 150   1              poweroff_flag=0;
+ 151   1              adc_flag=0;
+ 152   1      
+ 153   1      
+ 154   1              //'0c 00 a1 01 00 00 27 00 00 00 00 00
+ 155   1              tx_buf[0]=0x0C;//固定开头
+ 156   1              tx_buf[1]=0x00;
+ 157   1              tx_buf[2]=0xA1;
+ 158   1              tx_buf[3]=0x01;
+ 159   1      
+ 160   1              tx_buf[4]=0x00;//功能键shift、alt、ctrl、win
+ 161   1              tx_buf[5]=0x00;//固定00
+ 162   1      
+ 163   1              tx_buf[6]=0x00;//后面6个字节为按键码
+ 164   1              tx_buf[7]=0x00;
+ 165   1              tx_buf[8]=0x00;
+ 166   1              tx_buf[9]=0x00;
+ 167   1              tx_buf[10]=0x00;
+ 168   1              tx_buf[11]=0x00;
+ 169   1      
+ 170   1              fn_flag=FnUp;
+ 171   1      
+ 172   1              ADC0_Init();
+ 173   1              bl_vcc_ctrl     =       bl_on;/// /1为关闭蓝牙电源，0为开启
+ 174   1              EA = 1;
+ 175   1              
+ 176   1              
+ 177   1              while(1)
+ 178   1              {
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 4   
+
+ 179   2                      delay_ms(10);
+ 180   2                      
+ 181   2                      if(TX_Ready == 1 && UART_Buffer_Size != 0)
+ 182   2                      {
+ 183   3                              TX_Ready = 0;                 // Set the flag to zero
+ 184   3      
+ 185   3                              // If a new word is being output
+ 186   3                              if ( UART_Buffer_Size == UART_Input_First ) {UART_Output_First = 0;}
+ 187   3      
+ 188   3                              tmp = UART_Buffer[UART_Output_First];
+ 189   3      
+ 190   3                              KEY_VAL(tmp);
+ 191   3      
+ 192   3                              UART_Output_First++;            // Update counter
+ 193   3      
+ 194   3                              UART_Buffer_Size--;             // Decrease array size
+ 195   3      
+ 196   3                              TI0 = 1;                      // Set transmit flag to 1
+ 197   3      
+ 198   3                      }
+ 199   2                      else
+ 200   2                      {
+ 201   3                              UART_Buffer_Size = 0;            // Set the array size to 0
+ 202   3                              TX_Ready = 1;                    // Indicate transmission complete
+ 203   3                      }
+ 204   2      
+ 205   2                      if(reconn_flag)
+ 206   2                      {
+ 207   3                              idle_timeout=0;//重新连接按下则空闲等待置0，从新计数
+ 208   3                              reconn_flag=0;
+ 209   3                              
+ 210   3                              bl_conn_ctrl=1;//蓝牙清楚记忆，重新连接
+ 211   3                              delay_ms(2000);
+ 212   3                              bl_conn_ctrl=0;
+ 213   3                              
+ 214   3                      }
+ 215   2      
+ 216   2                      if(poweroff_flag)
+ 217   2                      {
+ 218   3                              poweroff_flag=0;
+ 219   3                              vcc_ctrl=vcc_off;//总电源关闭
+ 220   3                      }
+ 221   2                      
+ 222   2                      if(adc_flag)
+ 223   2                      {
+ 224   3                              adc_flag=0;
+ 225   3                              ADC0_Init();
+ 226   3                      }
+ 227   2              }
+ 228   1      }
+*** WARNING C280 IN LINE 134 OF F330_UART.C: 'i': unreferenced local variable
+ 229          
+ 230          //-----------------------------------------------------------------------------
+ 231          // Initialization Subroutines
+ 232          //-----------------------------------------------------------------------------
+ 233          
+ 234          //-----------------------------------------------------------------------------
+ 235          // PORT_Init
+ 236          //-----------------------------------------------------------------------------
+ 237          //
+ 238          // Return Value : None
+ 239          // Parameters   : None
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 5   
+
+ 240          //
+ 241          // Configure the Crossbar and GPIO ports.
+ 242          //
+ 243          // P0.4   digital   push-pull    UART TX
+ 244          // P0.5   digital   open-drain   UART RX
+ 245          //
+ 246          //-----------------------------------------------------------------------------
+ 247          void PORT_Init (void)
+ 248          {
+ 249   1              P1MDIN    = 0x7F;
+ 250   1              P0MDOUT   = 0x14;
+ 251   1              P1MDOUT   = 0x48;
+ 252   1              XBR0    = 0x01;                     // Enable UART on P0.4(TX) and P0.5(RX)
+ 253   1              XBR1    = 0x40;                     // Enable crossbar and weak pull-ups
+ 254   1      }
+ 255          //ADC Init P1.7-GND
+ 256          void ADC0_Init()
+ 257          {
+ 258   1              uint8 k;
+ 259   1              uint16 adc_val;
+ 260   1              
+ 261   1              EA=0;
+ 262   1              delay_ms(50);
+ 263   1      
+ 264   1              
+ 265   1              AMX0P     = 0x0F;//P1.7
+ 266   1          AMX0N     = 0x11;//GND
+ 267   1              ADC0CF   |= 0x04;//LEFT ADJUST
+ 268   1              AD0EN     = 1;
+ 269   1              adc_val   = 0;
+ 270   1              for(k=0;k<10;k++)
+ 271   1              {
+ 272   2                      AD0INT=0;
+ 273   2                      AD0BUSY=1;//转换ADC
+ 274   2                      while(!AD0INT);//等待转换完成
+ 275   2                      if(k>4)adc_val += ADC0H;
+ 276   2              }
+ 277   1              AD0EN = 0;
+ 278   1      
+ 279   1              k=(uint8)(adc_val / 5)+3;//补偿3-36mv，4-48mv
+ 280   1              
+ 281   1              if(k>115)bat_val=100;//2776
+ 282   1              else if(k>110)bat_val=75;//2655
+ 283   1              else if(k>105)bat_val=50;//2535
+ 284   1              else if(k>100)bat_val=40;//2414
+ 285   1              else if(k>95)bat_val=30;//2293
+ 286   1              else if(k>90)bat_val=20;//2173
+ 287   1              else if(k>85)bat_val=10;//2052
+ 288   1              else if(k>80)bat_val=5;//1931
+ 289   1              else //if(k>75)//1811
+ 290   1              {
+ 291   2                      bat_val=0;
+ 292   2                      poweroff_flag=1;
+ 293   2              }
+ 294   1              EA=1;
+ 295   1      }
+ 296          //-----------------------------------------------------------------------------
+ 297          // SYSCLK_Init
+ 298          //-----------------------------------------------------------------------------
+ 299          //
+ 300          // Return Value : None
+ 301          // Parameters   : None
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 6   
+
+ 302          //
+ 303          // This routine initializes the system clock to use the internal oscillator
+ 304          // at its maximum frequency.
+ 305          // Also enables the Missing Clock Detector.
+ 306          //-----------------------------------------------------------------------------
+ 307          
+ 308          void SYSCLK_Init (void)
+ 309          {
+ 310   1      
+ 311   1         OSCICN    = 0x81;                                    //6.125MHz
+ 312   1      
+ 313   1         RSTSRC  = 0x04;                     // Enable missing clock detector
+ 314   1      
+ 315   1      }
+ 316          //1ms定时器
+ 317          void Timer0_Init (void)
+ 318          {
+ 319   1              TH0 =TIMER0_RELOAD_HIGH;
+ 320   1              CKCON |=  0x02;//48分频
+ 321   1      
+ 322   1              TL0 = TH0;                          // init Timer1
+ 323   1              TMOD &= ~0x0F;                      // TMOD: timer 1 in 8-bit autoreload
+ 324   1              TMOD |=  0x02;
+ 325   1              TR0 = 1;  
+ 326   1              ET0=1;
+ 327   1      }
+ 328          //-----------------------------------------------------------------------------
+ 329          // UART0_Init
+ 330          //-----------------------------------------------------------------------------
+ 331          //
+ 332          // Return Value : None
+ 333          // Parameters   : None
+ 334          //
+ 335          // Configure the UART0 using Timer1, for <BAUDRATE> and 8-N-1.
+ 336          //-----------------------------------------------------------------------------
+ 337          void UART0_Init (void)
+ 338          {
+ 339   1         SCON0 = 0x10;                       // SCON0: 8-bit variable bit rate
+ 340   1                                             //        level of STOP bit is ignored
+ 341   1                                             //        RX enabled
+ 342   1                                             //        ninth bits are zeros
+ 343   1                                             //        clear RI0 and TI0 bits
+ 344   1         if (SYSTEMCLOCK/BAUDRATE/2/256 < 1) {
+ 345   2            TH1 = -(SYSTEMCLOCK/BAUDRATE/2);
+ 346   2            CKCON &= ~0x0B;                  // T1M = 1; SCA1:0 = xx
+ 347   2            CKCON |=  0x08;
+ 348   2         } else if (SYSTEMCLOCK/BAUDRATE/2/256 < 4) {
+ 349   2            TH1 = -(SYSTEMCLOCK/BAUDRATE/2/4);
+ 350   2            CKCON &= ~0x0B;                  // T1M = 0; SCA1:0 = 01
+ 351   2            CKCON |=  0x01;
+ 352   2         } else if (SYSTEMCLOCK/BAUDRATE/2/256 < 12) {
+ 353   2            TH1 = -(SYSTEMCLOCK/BAUDRATE/2/12);
+ 354   2            CKCON &= ~0x0B;                  // T1M = 0; SCA1:0 = 00
+ 355   2         } else {
+ 356   2            TH1 = -(SYSTEMCLOCK/BAUDRATE/2/48);
+ 357   2            CKCON &= ~0x0B;                  // T1M = 0; SCA1:0 = 10
+ 358   2            CKCON |=  0x02;
+ 359   2         }
+ 360   1      
+ 361   1         TL1 = TH1;                          // init Timer1
+ 362   1         TMOD &= ~0xf0;                      // TMOD: timer 1 in 8-bit autoreload
+ 363   1         TMOD |=  0x20;
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 7   
+
+ 364   1         TR1 = 1;                            // START Timer1
+ 365   1         TX_Ready = 1;                       // Flag showing that UART can transmit
+ 366   1         IP |= 0x10;                         // Make UART high priority
+ 367   1         ES0 = 1;                            // Enable UART0 interrupts
+ 368   1      }
+ 369          
+ 370          //-----------------------------------------------------------------------------
+ 371          // Interrupt Service Routines
+ 372          //-----------------------------------------------------------------------------
+ 373          //-----------------------------------------------------------------------------
+ 374          // Timer0_ISR
+ 375          //-----------------------------------------------------------------------------
+ 376          void Timer0_ISR (void) interrupt 1
+ 377          {
+ 378   1         static int counter = 0;
+ 379   1      
+ 380   1         if((counter++) >= 1000)
+ 381   1         {
+ 382   2            counter = 0;
+ 383   2                idle_timeout++;
+ 384   2                adc_timeout++;
+ 385   2                      
+ 386   2                if(idle_timeout>=idle_timeout_time)//5min
+ 387   2                {
+ 388   3                      idle_timeout=0;
+ 389   3                      poweroff_flag=1;
+ 390   3                }
+ 391   2                if(adc_timeout>=600)//10min
+ 392   2                {
+ 393   3                      adc_timeout=0;
+ 394   3                      adc_flag=1;
+ 395   3                }
+ 396   2         }
+ 397   1      }
+ 398          //-----------------------------------------------------------------------------
+ 399          // UART0_Interrupt
+ 400          //-----------------------------------------------------------------------------
+ 401          //
+ 402          // This routine is invoked whenever a character is entered or displayed on the
+ 403          // Hyperterminal.
+ 404          //
+ 405          //-----------------------------------------------------------------------------
+ 406          
+ 407          void UART0_Interrupt (void) interrupt 4
+ 408          {
+ 409   1         idle_timeout=0;//有按键接收则，空闲等待时间置0，从新计数
+ 410   1         
+ 411   1         if (RI0 == 1)
+ 412   1         {
+ 413   2            if( UART_Buffer_Size == 0)  {      // If new word is entered
+ 414   3               UART_Input_First = 0;    }
+ 415   2      
+ 416   2            RI0 = 0;                           // Clear interrupt flag
+ 417   2      
+ 418   2            Byte = SBUF0;                      // Read a character from UART
+ 419   2      
+ 420   2            if (UART_Buffer_Size < UART_BUFFERSIZE)
+ 421   2            {
+ 422   3               UART_Buffer[UART_Input_First] = Byte; // Store in array
+ 423   3      
+ 424   3               UART_Buffer_Size++;             // Update array's size
+ 425   3      
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 8   
+
+ 426   3               UART_Input_First++;             // Update counter
+ 427   3            }
+ 428   2         }
+ 429   1      
+ 430   1         if (TI0 == 1)                   // Check if transmit flag is set
+ 431   1         {
+ 432   2            TI0 = 0;                           // Clear interrupt flag
+ 433   2      
+ 434   2            if (tx_count <12)         // 总共发送12个字节
+ 435   2            {
+ 436   3      
+ 437   3               // Store a character in the variable byte
+ 438   3               SBUF0= tx_buf[tx_count++];
+ 439   3      
+ 440   3            }
+ 441   2            else
+ 442   2            {
+ 443   3               tx_count = 0;            // Set the array size to 0
+ 444   3               TX_Ready = 1;                    // Indicate transmission complete
+ 445   3            }
+ 446   2         }
+ 447   1      }
+ 448          
+ 449          //键值处理
+ 450          void KEY_VAL(uint8 tmp)
+ 451          {
+ 452   1              switch (tmp)
+ 453   1              {
+ 454   2                      case LCtrl:      
+ 455   2                      {
+ 456   3                              tx_buf[4]|=0x01;
+ 457   3                              break;
+ 458   3                      }
+ 459   2                      case LShift:     
+ 460   2                      {
+ 461   3                              tx_buf[4]|=0x02;
+ 462   3                              break;
+ 463   3                      }
+ 464   2                      case LAlt:       
+ 465   2                      {
+ 466   3                              tx_buf[4]|=0x04;
+ 467   3                              break;
+ 468   3                      }
+ 469   2                      case LGui:       
+ 470   2                      {
+ 471   3                              tx_buf[4]|=0x08;
+ 472   3                              break;
+ 473   3                      }
+ 474   2                      case RShift:     
+ 475   2                      {
+ 476   3                              tx_buf[4]|=0x20;
+ 477   3                              break;
+ 478   3                      }
+ 479   2                      case RAlt:       
+ 480   2                      {
+ 481   3                              tx_buf[4]|=0x40;
+ 482   3                              break;
+ 483   3                      }
+ 484   2                      case LCtrl+0x80:         
+ 485   2                      {
+ 486   3                              tx_buf[4]&=~0x01;
+ 487   3                              break;
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 9   
+
+ 488   3                      }
+ 489   2                      case LShift+0x80:        
+ 490   2                      {
+ 491   3                              tx_buf[4]&=~0x02;
+ 492   3                              break;
+ 493   3                      }
+ 494   2                      case LAlt+0x80:  
+ 495   2                      {
+ 496   3                              tx_buf[4]&=~0x04;
+ 497   3                              break;
+ 498   3                      }
+ 499   2                      case LGui+0x80:  
+ 500   2                      {
+ 501   3                              tx_buf[4]&=~0x08;
+ 502   3                              break;
+ 503   3                      }
+ 504   2                      case RShift+0x80:        
+ 505   2                      {
+ 506   3                              tx_buf[4]&=~0x20;
+ 507   3                              break;
+ 508   3                      }
+ 509   2                      case RAlt+0x80:  
+ 510   2                      {
+ 511   3                              tx_buf[4]&=~0x40;
+ 512   3                              break;
+ 513   3                      }               
+ 514   2                      case Fn:         
+ 515   2                      {
+ 516   3                              fn_flag=FnDown;
+ 517   3                              tx_buf[6]=0x00;
+ 518   3                              break;
+ 519   3                      }
+ 520   2                      case Fn+0x80:    
+ 521   2                      {
+ 522   3                              fn_flag=FnUp;
+ 523   3                              tx_buf[6]=0x00;
+ 524   3                              tx_buf[7]=0x00;
+ 525   3                              tx_buf[8]=0x00;
+ 526   3                              tx_buf[9]=0x00;
+ 527   3                              tx_buf[10]=0x00;
+ 528   3                              tx_buf[11]=0x00;
+ 529   3                              break;
+ 530   3                      }
+ 531   2                      default :
+ 532   2                      {
+ 533   3                              if(tmp & 0x80)
+ 534   3                              {
+ 535   4                                      tx_buf[6]=0x00;
+ 536   4                                      tx_buf[7]=0x00;
+ 537   4                                      tx_buf[8]=0x00;
+ 538   4                                      tx_buf[9]=0x00;
+ 539   4                                      tx_buf[10]=0x00;
+ 540   4                                      tx_buf[11]=0x00;
+ 541   4                              }
+ 542   3                              else
+ 543   3                              {
+ 544   4                                      if(fn_flag==FnUp)       
+ 545   4                                      {
+ 546   5                                              tx_buf[6]=key_code[tmp];
+ 547   5                                      }
+ 548   4      
+ 549   4                                      if(fn_flag==FnDown)     //Fn键按下
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 10  
+
+ 550   4                                      {
+ 551   5                                              if(tmp==0x2B)//Fn+F//重新连接
+ 552   5                                              {
+ 553   6                                                      tx_buf[6]=0x00;
+ 554   6                                                      reconn_flag=1;//重新连接标志置1
+ 555   6                                              }
+ 556   5                                              if(tmp==0x5D)//Fn+A=1c///0x5D(ok)//关机标志
+ 557   5                                              {
+ 558   6                                                      tx_buf[6]=0x00;
+ 559   6                                                      poweroff_flag=1;//关机标志置1
+ 560   6                                              }
+ 561   5                                              if(tmp==0x64)//Fn+S=1b///0x4A/67(BAT)//电池电量
+ 562   5                                              {
+ 563   6                                                      ADC0_Init();
+ 564   6                                                      tx_buf[6]=batt[bat_val/100];
+ 565   6                                                      tx_buf[7]=batt[bat_val%100/10];
+ 566   6                                                      tx_buf[8]=batt[bat_val%10];
+ 567   6                                                      tx_buf[9]=batt[10];//B
+ 568   6                                                      tx_buf[10]=batt[11];//A
+ 569   6                                                      tx_buf[11]=batt[12];//T
+ 570   6                                                      
+ 571   6                                              }
+ 572   5                                              if(tmp==0x1B)//Fn+S=1b//延长自动关机时间至
+ 573   5                                              {
+ 574   6                                                      if(idle_timeout_time<600)
+ 575   6                                                      {
+ 576   7                                                              idle_timeout_time=1800;//30min
+ 577   7                                                              
+ 578   7                                                              tx_buf[6]=batt[3];
+ 579   7                                                              tx_buf[7]=batt[0];
+ 580   7                                                      }
+ 581   6                                                      else
+ 582   6                                                      {
+ 583   7                                                              idle_timeout_time=300;//5min
+ 584   7                                                              tx_buf[6]=batt[0];
+ 585   7                                                              tx_buf[7]=batt[5];
+ 586   7                                                      }
+ 587   6                                                      
+ 588   6                                                      tx_buf[8]=batt[13];//m
+ 589   6                                                      tx_buf[9]=batt[14];//i
+ 590   6                                                      tx_buf[10]=batt[15];//n
+ 591   6                                                      tx_buf[11]=0x00;
+ 592   6                                              }
+ 593   5                                              else
+ 594   5                                              {
+ 595   6                                                      tx_buf[6]=fn_key_code[tmp];
+ 596   6                                              }
+ 597   5                                      }
+ 598   4                              }
+ 599   3              
+ 600   3                              break;
+ 601   3                      }
+ 602   2              } 
+ 603   1      
+ 604   1      }
+ 605          
+ 606          
+ 607          /*=================================================================*/
+ 608          /*
+ 609                  delay_ms(1);  //n=600,1ms,11.0592MHz
+ 610                  delay_us(1);  //1us
+ 611          
+C51 COMPILER V7.00  F330_UART                                                              10/08/2018 22:14:38 PAGE 11  
+
+ 612          */      
+ 613          /******************************delay time********************************** 
+ 614          void delay_us(uint8 us)  
+ 615          {  
+ 616           while(us--); 
+ 617          }                                                                                                                                               */ 
+ 618          //**************************
+ 619          void delay_ms(uint16 ms)  
+ 620          {  
+ 621   1       uint16 n ;  
+ 622   1       while(ms--)  
+ 623   1            {  
+ 624   2             n  =  500;   
+ 625   2             while(n--);  
+ 626   2            }  
+ 627   1      } 
+ 628          //-----------------------------------------------------------------------------
+ 629          // End Of File
+ 630          //-----------------------------------------------------------------------------
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    933    ----
+   CONSTANT SIZE    =    272    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     63       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)
