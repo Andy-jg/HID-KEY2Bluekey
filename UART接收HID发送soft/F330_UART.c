@@ -7,12 +7,12 @@
 #include "mytype.h"
 #include "config.h"
 
-static uint16 idle_timeout_time=300;//无按键按下超时,5min
-static uint16 idle_timeout=0;//无按键按下超时
-static uint8 reconn_flag=0;//重新连接标志
-static uint8 poweroff_flag=0;//关机标志
-static uint8 bat_val=0;//电池电压
-static uint8 adc_flag=0;//电池电压测试标志，10min
+static uint16 idletimeNET=300;//无按键按下超时,5min
+static uint16 idletime=0;//无按键按下超时
+static uint8  resetflag=0;//重新连接标志
+static uint8  poweroffFlag=0;//关机标志
+static uint8  bat_val=0;//电池电压
+static uint8  adc_flag=0;//电池电压测试标志，10min
 static uint16 adc_timeout=0;//电压测试时间
 uint8 code batt[16]= {0x27,0x1E,0x1F,0x20,0x21,0x22,0x23,0x24,0x25,0x26,0x05,0x04,0x17,0x10,0x0C,0x11}; //0~9,bat,min
 
@@ -80,11 +80,11 @@ uint8 fn_flag;//Fn键按下状态
 
 //uart缓冲区使用变量
 #define UART_BUFFERSIZE 32
-uint8 UART_Buffer[UART_BUFFERSIZE];
-uint8 UART_Buffer_Size = 0;
-uint8 UART_Input_First = 0;
-uint8 UART_Output_First = 0;
-uint8 TX_Ready =1;
+uint8 UARTgetBuf[UART_BUFFERSIZE];
+uint8 u8Rxindex = 0;
+uint8 u8getQunindex = 0;
+uint8 u8sendQunindex = 0;
+uint8 TxLock =1;
 static uint8 Byte;
 
 //KEY
@@ -149,9 +149,9 @@ void main (void)
 	//bl_state	为蓝牙模块状态输入
 	//key_int0  按键中断及开机
 	//zb_adc0   电池电压判断
-	idle_timeout=0;
-	reconn_flag=0;//重新连接标志
-	poweroff_flag=0;
+	idletime=0;
+	resetflag=0;//重新连接标志
+	poweroffFlag=0;
 	adc_flag=0;
 
 
@@ -174,7 +174,7 @@ void main (void)
 	fn_flag=FnUp;
 
 	ADC0_Init();
-	bl_vcc_ctrl	=	bl_on;//1为关闭蓝牙电源，0为开启
+	bl_vcc_ctrl	=	bl_on;/// /1为关闭蓝牙电源，0为开启
 	EA = 1;
 
 
@@ -182,37 +182,37 @@ void main (void)
 	{
 		delay_ms(10);
 
-		if(TX_Ready == 1 && UART_Buffer_Size != 0)
+		if((TxLock == 1 )&& (u8Rxindex != 0))
 		{
-			TX_Ready = 0;                 // Set the flag to zero
+			TxLock = 0;                 // Set the flag to zero
 
 			// If a new word is being output
-			if ( UART_Buffer_Size == UART_Input_First )
+			if ( u8Rxindex == u8getQunindex )
 			{
-				UART_Output_First = 0;
+				u8sendQunindex = 0;
 			}
 
-			tmp = UART_Buffer[UART_Output_First];
+			tmp = UARTgetBuf[u8sendQunindex];
 
-			KEY_VAL(tmp);
+			KEY_VAL(tmp);  //break;
 
-			UART_Output_First++;            // Update counter
+			u8sendQunindex++;            // Update counter
 
-			UART_Buffer_Size--;             // Decrease array size
+			u8Rxindex--;             // Decrease array size
 
 			TI0 = 1;                      // Set transmit flag to 1
 
 		}
 		else
 		{
-			UART_Buffer_Size = 0;            // Set the array size to 0
-			TX_Ready = 1;                    // Indicate transmission complete
+			u8Rxindex = 0;            // Set the array size to 0
+			TxLock = 1;                    // Indicate transmission complete
 		}
 
-		if(reconn_flag)
+		if(resetflag)
 		{
-			idle_timeout=0;//重新连接按下则空闲等待置0，从新计数
-			reconn_flag=0;
+			idletime=0;//重新连接按下则空闲等待置0，从新计数
+			resetflag=0;
 
 			bl_conn_ctrl=1;//蓝牙清楚记忆，重新连接
 			delay_ms(2000);
@@ -220,9 +220,9 @@ void main (void)
 
 		}
 
-		if(poweroff_flag)
+		if(poweroffFlag)
 		{
-			poweroff_flag=0;
+			poweroffFlag=0;
 			vcc_ctrl=vcc_off;//总电源关闭
 		}
 
@@ -296,7 +296,7 @@ void ADC0_Init()
 	else //if(k>75)//1811
 	{
 		bat_val=0;
-		poweroff_flag=1;
+		poweroffFlag=1;
 	}
 	EA=1;
 }
@@ -376,7 +376,7 @@ void UART0_Init (void)
 	TMOD &= ~0xf0;                      // TMOD: timer 1 in 8-bit autoreload
 	TMOD |=  0x20;
 	TR1 = 1;                            // START Timer1
-	TX_Ready = 1;                       // Flag showing that UART can transmit
+	TxLock = 1;                       // Flag showing that UART can transmit
 	IP |= 0x10;                         // Make UART high priority
 	ES0 = 1;                            // Enable UART0 interrupts
 }
@@ -394,13 +394,13 @@ void Timer0_ISR (void) interrupt 1
 	if((counter++) >= 1000)
 	{
 		counter = 0;
-		idle_timeout++;
+		idletime++;
 		adc_timeout++;
 
-		if(idle_timeout>=idle_timeout_time)//5min
+		if(idletime>=idletimeNET)//5min
 		{
-			idle_timeout=0;
-			poweroff_flag=1;
+			idletime=0;
+			poweroffFlag=1;
 		}
 		if(adc_timeout>=600)//10min
 		{
@@ -420,26 +420,27 @@ void Timer0_ISR (void) interrupt 1
 
 void UART0_Interrupt (void) interrupt 4
 {
-	idle_timeout=0;//有按键接收则，空闲等待时间置0，从新计数
+	idletime=0;//有按键接收则，空闲等待时间置0，从新计数
 
 	if (RI0 == 1)
 	{
-		if( UART_Buffer_Size == 0)         // If new word is entered
+		if( u8Rxindex == 0)
 		{
-			UART_Input_First = 0;
+			// If new word is entered
+			u8getQunindex = 0;
 		}
 
 		RI0 = 0;                           // Clear interrupt flag
 
 		Byte = SBUF0;                      // Read a character from UART
 
-		if (UART_Buffer_Size < UART_BUFFERSIZE)
+		if (u8Rxindex < UART_BUFFERSIZE)
 		{
-			UART_Buffer[UART_Input_First] = Byte; // Store in array
+			UARTgetBuf[u8getQunindex] = Byte; // Store in array
 
-			UART_Buffer_Size++;             // Update array's size
+			u8Rxindex++;             // Update array's size
 
-			UART_Input_First++;             // Update counter
+			u8getQunindex++;             // Update counter
 		}
 	}
 
@@ -457,7 +458,7 @@ void UART0_Interrupt (void) interrupt 4
 		else
 		{
 			tx_count = 0;            // Set the array size to 0
-			TX_Ready = 1;                    // Indicate transmission complete
+			TxLock = 1;                    // Indicate transmission complete
 		}
 	}
 }
@@ -567,12 +568,12 @@ void KEY_VAL(uint8 tmp)
 				if(tmp==0x2B)//Fn+F//重新连接
 				{
 					tx_buf[6]=0x00;
-					reconn_flag=1;//重新连接标志置1
+					resetflag=1;//重新连接标志置1
 				}
 				if(tmp==0x5D)//Fn+A=1c///0x5D(ok)//关机标志
 				{
 					tx_buf[6]=0x00;
-					poweroff_flag=1;//关机标志置1
+					poweroffFlag=1;//关机标志置1
 				}
 				if(tmp==0x64)//Fn+S=1b///0x4A/67(BAT)//电池电量
 				{
@@ -587,16 +588,16 @@ void KEY_VAL(uint8 tmp)
 				}
 				if(tmp==0x1B)//Fn+S=1b//延长自动关机时间至
 				{
-					if(idle_timeout_time<600)
+					if(idletimeNET<600)
 					{
-						idle_timeout_time=1800;//30min
+						idletimeNET=1800;//30min
 
 						tx_buf[6]=batt[3];
 						tx_buf[7]=batt[0];
 					}
 					else
 					{
-						idle_timeout_time=300;//5min
+						idletimeNET=300;//5min
 						tx_buf[6]=batt[0];
 						tx_buf[7]=batt[5];
 					}
