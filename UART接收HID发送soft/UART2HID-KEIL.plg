@@ -4,12 +4,12 @@
 <h1>µVision Build Log</h1>
 <h2>Project:</h2>
 F:\MOUSE\MOUSE\vargitUART2HIC\UARTΩ” ’HID∑¢ÀÕsoft\UART2HID-KEIL.uvproj
-Project File Date:  <unknown>
+Project File Date:  10/09/2018
 
 <h2>Output:</h2>
 Build target 'Target 1'
 compiling F330_UART.c...
-F330_UART.C(117): warning C280: 'i': unreferenced local variable
+F330_UART.C(134): warning C280: 'i': unreferenced local variable
 linking...
 Program Size: data=74.0 xdata=0 code=1532
 creating hex file from "UART2HID-KEIL"...
