@@ -58,12 +58,12 @@ uint8 fn_flag;//Fn键按下状态
 #define	F3		0x26
 
 //uart缓冲区使用变量
-#define UART_BUFFERSIZE 32
+#define UART_BUFFERSIZE 48
 uint8 UART_Buffer[UART_BUFFERSIZE];
 uint8 UART_Buffer_Size = 0;
 uint8 UART_Input_First = 0;
-uint8 UART_Output_First = 0;
-uint8 TX_Ready =1;
+uint8 UART_Output_First = 0;   // Update counter
+uint8 TX_Ready =1;    // Indicate transmission complete
 static uint8 Byte;
 
 //KEY
@@ -124,7 +124,7 @@ void main (void)
 
 	vcc_ctrl	=	vcc_on;//打开系统总电源,1开0关
 	bl_conn_ctrl=	0;//根据外部按钮的状态控制蓝牙模块
-	zb_led2		=	0;//1为亮，0为灭，LED2未连接
+	zb_led2		=	0; //    1              为亮，0为灭，LED2未连接
 	//bl_state	为蓝牙模块状态输入
 	//key_int0  按键中断及开机
 	//zb_adc0   电池电压判断
@@ -299,14 +299,14 @@ void SYSCLK_Init (void)
 	RSTSRC  = 0x04;                     // Enable missing clock detector
 
 }
-//1ms定时器
+//     1ms定时器
 void Timer0_Init (void)
 {
 	TH0 =TIMER0_RELOAD_HIGH;
 	CKCON |=  0x02;//48分频
 
 	TL0 = TH0;                          // init Timer1
-	TMOD &= ~0x0F;                      // TMOD: timer 1 in 8-bit autoreload
+	TMOD &= ~0x0F;                 // TMOD: timer 1 in 8-bit autoreload
 	TMOD |=  0x02;
 	TR0 = 1;
 	ET0=1;
@@ -401,7 +401,7 @@ void UART0_Interrupt (void) interrupt 4
 {
 	idle_timeout=0;//有按键接收则，空闲等待时间置0，从新计数
 
-	if (RI0 == 1)
+	if (RI0 == 1)    //// 17 us one byte .1ms  it can get one key wave in 1ms.
 	{
 		if( UART_Buffer_Size == 0)         // If new word is entered
 		{
