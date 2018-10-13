@@ -41,10 +41,9 @@ uint8 fn_flag;//Fn键按下状态
 //uart缓冲区使用变量
 
 uint8 UART_Buffer[UART_BUFFERSIZE];
-uint8 UART_Buf_NeedSendNum = 0;
-uint8 UART_Buf_RecNum = 0;
-uint8 UART_Buf_SendNum = 0;   // Update counter
-uint8 TX_Ready =1;    // Indicate transmission complete
+uint8 UART_Buf_Head = 0;
+uint8 UART_Buf_Tail = 0;   // Update counter
+uint8 TX_Ready =TRUE;    // Indicate transmission complete
 static uint8 Byte;
 
 //KEY
@@ -144,30 +143,25 @@ void main (void)
 	{
 		delay_ms(10);
 
-		if((TRUE==TX_Ready) && (0!=UART_Buf_NeedSendNum))   //// one key cmd .
+		if((TRUE==TX_Ready) && (UART_Buf_Tail!=UART_Buf_Head))   //// one or two key key cmd .
 		{
 			TX_Ready =FALSE;                 // Set the flag to zero
 
-			// If a new word is being output
-			if ( UART_Buf_NeedSendNum == UART_Buf_RecNum )
-			{
-				UART_Buf_SendNum = 0;
-			}
+			// If a new word is being output			
 
-			tmp = UART_Buffer[UART_Buf_SendNum];
+			tmp = UART_Buffer[UART_Buf_Tail];
 
 			KEY_VAL(tmp);
 
-			UART_Buf_SendNum++;            // Update counter
+			UART_Buf_Tail++;            // Update counter			
 
-			UART_Buf_NeedSendNum--;             // Decrease array size
-
-			TI0 = TRUE;                      // Set transmit flag to 1
+			TI0 = TRUE;                      // Set transmit flag to 1// jump to uart send funtion
 
 		}
 		else
 		{
-			UART_Buf_NeedSendNum = 0;            // Set the array size to 0   //jiajia if uatr have date bug tx not ready .clear. 10 ms can get all data
+			UART_Buf_Head = 0;            // Set the array size to 0   //jiajia if uatr have date bug tx not ready .clear. 10 ms can get all data
+			UART_Buf_Tail=0;
 			TX_Ready = TRUE;                    // Indicate transmission complete
 			//it like if have two date. mean  K key down . send over and set UART_BUFFER_SIZE =0;
 		}
@@ -389,29 +383,23 @@ void UART0_Interrupt (void) interrupt 4
 	idle_timeout=0;//有按键接收则，空闲等待时间置0，从新计数
 
 	if (TRUE==RI0 )    //// 17 us one byte .1ms  it can get one key wave in 1ms.
-	{
-		if( UART_Buf_NeedSendNum == 0)         // If new word is entered
-		{
-			UART_Buf_RecNum = 0;
-		}
+	{		
 
 		RI0 = 0;                           // Clear interrupt flag
 
 		Byte = SBUF0;                      // Read a character from UART
 
-		if (UART_Buf_NeedSendNum < UART_BUFFERSIZE)
+		if (UART_Buf_Head < UART_BUFFERSIZE)
 		{
-			UART_Buffer[UART_Buf_RecNum] = Byte; // Store in array
+			UART_Buffer[UART_Buf_Head] = Byte; // Store in array
 
-			UART_Buf_NeedSendNum++;             // Update array's size
-
-			UART_Buf_RecNum++;             // Update counter
+			UART_Buf_Head++;             // Update array's size			
 		}
 	}
 
 	if (TRUE==TI0 )                   // Check if transmit flag is set
 	{
-		TI0 = 0;                           // Clear interrupt flag
+		TI0 = FALSE;                           // Clear interrupt flag
 
 		if (tx_count <12)         // 总共发送12个字节
 		{
