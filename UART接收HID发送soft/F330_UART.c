@@ -41,9 +41,9 @@ uint8 fn_flag;//Fn键按下状态
 //uart缓冲区使用变量
 
 uint8 UART_Buffer[UART_BUFFERSIZE];
-uint8 UART_Buffer_Size = 0;
-uint8 UART_Input_First = 0;
-uint8 UART_Output_First = 0;   // Update counter
+uint8 UART_Buf_NeedSendNum = 0;
+uint8 UART_Buf_RecNum = 0;
+uint8 UART_Buf_SendNum = 0;   // Update counter
 uint8 TX_Ready =1;    // Indicate transmission complete
 static uint8 Byte;
 
@@ -125,7 +125,7 @@ void  SedDevOut(void)
 	poweroff_flag=0;
 
 	bl_vcc_ctrl	=	SysBL_ON;/// /1为关闭蓝牙电源，0为开启
-	EA = 1;
+	EA = TRUE;
 }
 void main (void)
 {
@@ -144,33 +144,35 @@ void main (void)
 	{
 		delay_ms(10);
 
-		if((TRUE==TX_Ready) && (0!=UART_Buffer_Size))
+		if((TRUE==TX_Ready) && (0!=UART_Buf_NeedSendNum))   //// one key cmd .
 		{
 			TX_Ready =FALSE;                 // Set the flag to zero
 
 			// If a new word is being output
-			if ( UART_Buffer_Size == UART_Input_First )
+			if ( UART_Buf_NeedSendNum == UART_Buf_RecNum )
 			{
-				UART_Output_First = 0;
+				UART_Buf_SendNum = 0;
 			}
 
-			tmp = UART_Buffer[UART_Output_First];
+			tmp = UART_Buffer[UART_Buf_SendNum];
 
 			KEY_VAL(tmp);
 
-			UART_Output_First++;            // Update counter
+			UART_Buf_SendNum++;            // Update counter
 
-			UART_Buffer_Size--;             // Decrease array size
+			UART_Buf_NeedSendNum--;             // Decrease array size
 
 			TI0 = TRUE;                      // Set transmit flag to 1
 
 		}
 		else
 		{
-			UART_Buffer_Size = 0;            // Set the array size to 0   //jiajia if uatr have date bug tx not ready .clear. 10 ms can get all data
+			UART_Buf_NeedSendNum = 0;            // Set the array size to 0   //jiajia if uatr have date bug tx not ready .clear. 10 ms can get all data
 			TX_Ready = TRUE;                    // Indicate transmission complete
 			//it like if have two date. mean  K key down . send over and set UART_BUFFER_SIZE =0;
 		}
+
+		
 
 		if(reconn_flag)
 		{
@@ -236,7 +238,7 @@ void ADC0_Init()
 	AMX0P     = 0x0F;//P1.7
 	AMX0N     = 0x11;//GND
 	ADC0CF   |= 0x04;//LEFT ADJUST
-	AD0EN	  = 1;
+	AD0EN	  =TRUE;
 	adc_val	  = 0;
 	for(k=0; k<10; k++)
 	{
@@ -260,9 +262,9 @@ void ADC0_Init()
 	else //if(k>75)//1811
 	{
 		bat_val=0;
-		poweroff_flag=1;
+		poweroff_flag=TRUE;
 	}
-	EA=1;
+	EA=TRUE;
 }
 //-----------------------------------------------------------------------------
 // SYSCLK_Init
@@ -293,8 +295,8 @@ void Timer0_Init (void)
 	TL0 = TH0;                          // init Timer1
 	TMOD &= ~0x0F;                 // TMOD: timer 1 in 8-bit autoreload
 	TMOD |=  0x02;
-	TR0 = 1;
-	ET0=1;
+	TR0 = TRUE;
+	ET0=TRUE;
 }
 //-----------------------------------------------------------------------------
 // UART0_Init
@@ -388,22 +390,22 @@ void UART0_Interrupt (void) interrupt 4
 
 	if (TRUE==RI0 )    //// 17 us one byte .1ms  it can get one key wave in 1ms.
 	{
-		if( UART_Buffer_Size == 0)         // If new word is entered
+		if( UART_Buf_NeedSendNum == 0)         // If new word is entered
 		{
-			UART_Input_First = 0;
+			UART_Buf_RecNum = 0;
 		}
 
 		RI0 = 0;                           // Clear interrupt flag
 
 		Byte = SBUF0;                      // Read a character from UART
 
-		if (UART_Buffer_Size < UART_BUFFERSIZE)
+		if (UART_Buf_NeedSendNum < UART_BUFFERSIZE)
 		{
-			UART_Buffer[UART_Input_First] = Byte; // Store in array
+			UART_Buffer[UART_Buf_RecNum] = Byte; // Store in array
 
-			UART_Buffer_Size++;             // Update array's size
+			UART_Buf_NeedSendNum++;             // Update array's size
 
-			UART_Input_First++;             // Update counter
+			UART_Buf_RecNum++;             // Update counter
 		}
 	}
 
