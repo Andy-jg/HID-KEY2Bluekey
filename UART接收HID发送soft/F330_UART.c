@@ -397,7 +397,7 @@ void UART0_Interrupt (void) interrupt 4
 		}
 	}
 
-	if (TRUE==TI0 )                   // Check if transmit flag is set
+	if (TRUE==TI0 )                   // // uart send a byte and will set the flag.
 	{
 		TI0 = FALSE;                           // Clear interrupt flag
 
@@ -410,7 +410,7 @@ void UART0_Interrupt (void) interrupt 4
 		}
 		else
 		{
-			tx_count = 0;            // Set the array size to 0
+			tx_count = 0;            // Set the array size to 0  中断发送12个数据完成。结束中断。jiajia
 			TX_Ready = TRUE;                    // Indicate transmission complete
 		}
 	}
