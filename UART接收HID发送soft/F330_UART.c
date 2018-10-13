@@ -409,7 +409,7 @@ void UART0_Interrupt (void) interrupt 4
 		}
 	}
 
-	if (TRUE==TI0 )                   // Check if transmit flag is set
+	if (TRUE==TI0 )                   // uart send a byte and will set the flag.
 	{
 		TI0 = 0;                           // Clear interrupt flag
 
@@ -422,7 +422,7 @@ void UART0_Interrupt (void) interrupt 4
 		}
 		else
 		{
-			tx_count = 0;            // Set the array size to 0
+			tx_count = 0;            // Set the array size to 0   定时连续中断发送结束。没有数据了。
 			TX_Ready = TRUE;                    // Indicate transmission complete
 		}
 	}
