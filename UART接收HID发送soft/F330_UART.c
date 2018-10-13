@@ -109,7 +109,7 @@ void initHIDkeybuf(void)
 	tx_buf[9]=0x00;
 	tx_buf[10]=0x00;
 	tx_buf[11]=0x00;
-	fn_flag=FnUp;
+	fn_flag=HID_FnUp;
 }
 
 void  SedDevOut(void)
@@ -136,22 +136,17 @@ void main (void)
 	SYSCLK_Init ();                     // Initialize Oscillator
 	UART0_Init();
 	Timer0_Init ();                  //   1ms定时器
-
-	adc_flag=0;
-
 	initHIDkeybuf();
-
 	ADC0_Init();
-
 	SedDevOut();
 
-	while(1)
+	while(TRUE)
 	{
 		delay_ms(10);
 
-		if(TX_Ready == 1 && UART_Buffer_Size != 0)
+		if((TRUE==TX_Ready) && (0!=UART_Buffer_Size))
 		{
-			TX_Ready = 0;                 // Set the flag to zero
+			TX_Ready =FALSE;                 // Set the flag to zero
 
 			// If a new word is being output
 			if ( UART_Buffer_Size == UART_Input_First )
@@ -167,13 +162,14 @@ void main (void)
 
 			UART_Buffer_Size--;             // Decrease array size
 
-			TI0 = 1;                      // Set transmit flag to 1
+			TI0 = TRUE;                      // Set transmit flag to 1
 
 		}
 		else
 		{
-			UART_Buffer_Size = 0;            // Set the array size to 0
-			TX_Ready = 1;                    // Indicate transmission complete
+			UART_Buffer_Size = 0;            // Set the array size to 0   //jiajia if uatr have date bug tx not ready .clear. 10 ms can get all data
+			TX_Ready = TRUE;                    // Indicate transmission complete
+			//it like if have two date. mean  K key down . send over and set UART_BUFFER_SIZE =0;
 		}
 
 		if(reconn_flag)
@@ -181,9 +177,10 @@ void main (void)
 			idle_timeout=0;//重新连接按下则空闲等待置0，从新计数
 			reconn_flag=0;
 
-			bl_conn_ctrl=1;//蓝牙清楚记忆，重新连接
+			bl_conn_ctrl=TRUE;//蓝牙清楚记忆，重新连接
+			
 			delay_ms(2000);
-			bl_conn_ctrl=0;
+			bl_conn_ctrl=FALSE;
 
 		}
 
@@ -193,9 +190,9 @@ void main (void)
 			vcc_ctrl=SysPow_OFF;//总电源关闭
 		}
 
-		if(adc_flag)
+		if(TRUE==adc_flag)
 		{
-			adc_flag=0;
+			adc_flag=FALSE;
 			ADC0_Init();
 		}
 	}
@@ -231,10 +228,10 @@ void ADC0_Init()
 {
 	uint8 k;
 	uint16 adc_val;
-
+	adc_flag=0;
+	
 	EA=0;
 	delay_ms(50);
-
 
 	AMX0P     = 0x0F;//P1.7
 	AMX0N     = 0x11;//GND
@@ -342,10 +339,10 @@ void UART0_Init (void)
 	TL1 = TH1;                          // init Timer1
 	TMOD &= ~0xf0;                      // TMOD: timer 1 in 8-bit autoreload
 	TMOD |=  0x20;
-	TR1 = 1;                            // START Timer1
-	TX_Ready = 1;                       // Flag showing that UART can transmit
+	TR1 = TRUE;                            // START Timer1
+	TX_Ready = TRUE;                       // Flag showing that UART can transmit
 	IP |= 0x10;                         // Make UART high priority
-	ES0 = 1;                            // Enable UART0 interrupts
+	ES0 = TRUE;                            // Enable UART0 interrupts
 }
 
 //-----------------------------------------------------------------------------
@@ -367,12 +364,12 @@ void Timer0_ISR (void) interrupt 1
 		if(idle_timeout>=idle_timeout_time)//5min
 		{
 			idle_timeout=0;
-			poweroff_flag=1;
+			poweroff_flag=TRUE;
 		}
 		if(adc_timeout>=600)//10min
 		{
 			adc_timeout=0;
-			adc_flag=1;
+			adc_flag=TRUE;
 		}
 	}
 }
@@ -389,7 +386,7 @@ void UART0_Interrupt (void) interrupt 4
 {
 	idle_timeout=0;//有按键接收则，空闲等待时间置0，从新计数
 
-	if (RI0 == 1)    //// 17 us one byte .1ms  it can get one key wave in 1ms.
+	if (TRUE==RI0 )    //// 17 us one byte .1ms  it can get one key wave in 1ms.
 	{
 		if( UART_Buffer_Size == 0)         // If new word is entered
 		{
@@ -410,7 +407,7 @@ void UART0_Interrupt (void) interrupt 4
 		}
 	}
 
-	if (TI0 == 1)                   // Check if transmit flag is set
+	if (TRUE==TI0 )                   // Check if transmit flag is set
 	{
 		TI0 = 0;                           // Clear interrupt flag
 
@@ -424,85 +421,85 @@ void UART0_Interrupt (void) interrupt 4
 		else
 		{
 			tx_count = 0;            // Set the array size to 0
-			TX_Ready = 1;                    // Indicate transmission complete
+			TX_Ready = TRUE;                    // Indicate transmission complete
 		}
 	}
 }
 
-//键值处理
+// 键值处理
 void KEY_VAL(uint8 tmp)
 {
 	switch (tmp)
 	{
-	case LCtrl:
+	case HID_LCtrl:
 	{
 		tx_buf[4]|=0x01;
 		break;
 	}
-	case LShift:
+	case HID_LShift:
 	{
 		tx_buf[4]|=0x02;
 		break;
 	}
-	case LAlt:
+	case HID_LAlt:
 	{
 		tx_buf[4]|=0x04;
 		break;
 	}
-	case LGui:
+	case HID_LGui:
 	{
 		tx_buf[4]|=0x08;
 		break;
 	}
-	case RShift:
+	case HID_RShift:
 	{
 		tx_buf[4]|=0x20;
 		break;
 	}
-	case RAlt:
+	case HID_RAlt:
 	{
 		tx_buf[4]|=0x40;
 		break;
 	}
-	case LCtrl+0x80:
+	case HID_LCtrl+0x80:
 	{
 		tx_buf[4]&=~0x01;
 		break;
 	}
-	case LShift+0x80:
+	case HID_LShift+0x80:
 	{
 		tx_buf[4]&=~0x02;
 		break;
 	}
-	case LAlt+0x80:
+	case HID_LAlt+0x80:
 	{
 		tx_buf[4]&=~0x04;
 		break;
 	}
-	case LGui+0x80:
+	case HID_LGui+0x80:
 	{
 		tx_buf[4]&=~0x08;
 		break;
 	}
-	case RShift+0x80:
+	case HID_RShift+0x80:
 	{
 		tx_buf[4]&=~0x20;
 		break;
 	}
-	case RAlt+0x80:
+	case HID_RAlt+0x80:
 	{
 		tx_buf[4]&=~0x40;
 		break;
 	}
-	case Fn:
+	case HID_Fn:
 	{
-		fn_flag=FnDown;
+		fn_flag=HID_FnDown;
 		tx_buf[6]=0x00;
 		break;
 	}
-	case Fn+0x80:
+	case HID_Fn+0x80:
 	{
-		fn_flag=FnUp;
+		fn_flag=HID_FnUp;
 		tx_buf[6]=0x00;
 		tx_buf[7]=0x00;
 		tx_buf[8]=0x00;
@@ -524,24 +521,24 @@ void KEY_VAL(uint8 tmp)
 		}
 		else
 		{
-			if(fn_flag==FnUp)
+			if(fn_flag==HID_FnUp)
 			{
 				tx_buf[6]=key_code[tmp];
 			}
 
-			if(fn_flag==FnDown)	//Fn键按下
+			if(fn_flag==HID_FnDown)	//Fn键按下
 			{
-				if(tmp==0x2B)//Fn+F//重新连接
+				if(tmp==0x2B)//HID_Fn+F//重新连接
 				{
 					tx_buf[6]=0x00;
 					reconn_flag=1;//重新连接标志置1
 				}
-				if(tmp==0x5D)//Fn+A=1c///0x5D(ok)//关机标志
+				if(tmp==0x5D)//HID_Fn+A=1c///0x5D(ok)//关机标志
 				{
 					tx_buf[6]=0x00;
 					poweroff_flag=1;//关机标志置1
 				}
-				if(tmp==0x64)//Fn+S=1b///0x4A/67(BAT)//电池电量
+				if(tmp==0x64)//HID_Fn+S=1b///0x4A/67(BAT)//电池电量
 				{
 					ADC0_Init();
 					tx_buf[6]=batt[bat_val/100];
@@ -552,7 +549,7 @@ void KEY_VAL(uint8 tmp)
 					tx_buf[11]=batt[12];//T
 
 				}
-				if(tmp==0x1B)//Fn+S=1b//延长自动关机时间至
+				if(tmp==0x1B)//HID_Fn+S=1b//延长自动关机时间至
 				{
 					if(idle_timeout_time<600)
 					{

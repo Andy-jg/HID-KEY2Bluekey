@@ -31,26 +31,30 @@
 
 #define TIMER0_RELOAD_HIGH       AUX2  // Reload value for Timer0 high byte
 
-#define FnDown	0x00
-#define FnUp	0x01
+#define HID_FnDown	0x00
+#define HID_FnUp	0x01
 
 //key
-#define LCtrl	0x14
-#define LShift 	0x12
-#define LAlt	0x10
-#define LGui	0x07
+#define HID_LCtrl 	0x14
+#define HID_LShift 	0x12
+#define HID_LAlt		0x10
+#define HID_LGui		0x07
 //#define RCtrl	0x??
-#define RShift 	0x59
-#define RAlt	0x13
+#define HID_RShift 	0x59
+
+#define HID_RAlt		0x13
 //#define RGui	0x??
-#define Fn		0x02
+#define HID_Fn		0x02
 //fn_key,用于测试。实际使用时查表
-#define Home	0x5E
-#define End		0x2F
-#define PgUp	0x28
-#define PgDown	0x60
-#define Esc		0x0E
-#define F1		0x16
-#define	F3		0x26
+
+#define HID_Home	0x5E
+#define HID_End		0x2F
+#define HID_PgUp	0x28
+#define HID_PgDown	0x60
+#define HID_Esc		0x0E
+#define HID_F1		0x16
+#define HID_F3		0x26
+#define TRUE			(1)
+#define FALSE		(0)
 #endif
 
