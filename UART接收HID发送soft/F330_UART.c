@@ -29,36 +29,17 @@ void PORT_Init (void);
 void Timer0_Init (void);
 void KEY_VAL(uint8 tmp);
 void delay_ms(uint16 ms);
+void initHIDkeybuf(void);
 //-----------------------------------------------------------------------------
 // Global Variables
 //-----------------------------------------------------------------------------
 static uint8 tx_buf[12]= {0x0C,0x00,0xA1,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}; //HID发送缓冲区
 static uint8 tx_count;//发送字节数，实际发送12个字节
 uint8 fn_flag;//Fn键按下状态
-#define FnDown	0x00
-#define FnUp	0x01
 
-//key
-#define LCtrl	0x14
-#define LShift 	0x12
-#define LAlt	0x10
-#define LGui	0x07
-//#define RCtrl	0x??
-#define RShift 	0x59
-#define RAlt	0x13
-//#define RGui	0x??
-#define Fn		0x02
-//fn_key,用于测试。实际使用时查表
-#define Home	0x5E
-#define End		0x2F
-#define PgUp	0x28
-#define PgDown	0x60
-#define Esc		0x0E
-#define F1		0x16
-#define	F3		0x26
 
 //uart缓冲区使用变量
-#define UART_BUFFERSIZE 48
+
 uint8 UART_Buffer[UART_BUFFERSIZE];
 uint8 UART_Buffer_Size = 0;
 uint8 UART_Input_First = 0;
@@ -111,30 +92,9 @@ uint8 code fn_key_code[128]=
 //-----------------------------------------------------------------------------
 // MAIN Routine
 //-----------------------------------------------------------------------------
-
-void main (void)
+void initHIDkeybuf(void)
 {
-	uint8 i,tmp;
-	PCA0MD &= ~0x40;                    // WDTE = 0 (clear watchdog timer
-	// enable)
-	PORT_Init();                        // Initialize Port I/O
-	SYSCLK_Init ();                     // Initialize Oscillator
-	UART0_Init();
-	Timer0_Init ();                  //1ms定时器
-
-	vcc_ctrl	=	vcc_on;//打开系统总电源,1开0关
-	bl_conn_ctrl=	0;//根据外部按钮的状态控制蓝牙模块
-	zb_led2		=	0; //    1              为亮，0为灭，LED2未连接
-	//bl_state	为蓝牙模块状态输入
-	//key_int0  按键中断及开机
-	//zb_adc0   电池电压判断
-	idle_timeout=0;
-	reconn_flag=0;//重新连接标志
-	poweroff_flag=0;
-	adc_flag=0;
-
-
-	//'0c 00 a1 01 00 00 27 00 00 00 00 00
+//'0c 00 a1 01 00 00 27 00 00 00 00 00
 	tx_buf[0]=0x0C;//固定开头
 	tx_buf[1]=0x00;
 	tx_buf[2]=0xA1;
@@ -149,13 +109,41 @@ void main (void)
 	tx_buf[9]=0x00;
 	tx_buf[10]=0x00;
 	tx_buf[11]=0x00;
-
 	fn_flag=FnUp;
+}
+
+void  SedDevOut(void)
+{
+	vcc_ctrl	=	SysPow_ON;//打开系统总电源,1开0关
+	bl_conn_ctrl=	0;//根据外部按钮的状态控制蓝牙模块
+	zb_led2		=	0; //    1              为亮，0为灭，LED2未连接
+	//bl_state	为蓝牙模块状态输入
+	//key_int0  按键中断及开机
+	//zb_adc0   电池电压判断
+	idle_timeout=0;
+	reconn_flag=0;//重新连接标志
+	poweroff_flag=0;
+
+	bl_vcc_ctrl	=	SysBL_ON;/// /1为关闭蓝牙电源，0为开启
+	EA = 1;
+}
+void main (void)
+{
+	uint8 tmp;
+	PCA0MD &= ~0x40;                    // WDTE = 0 (clear watchdog timer
+	// enable)
+	PORT_Init();                        // Initialize Port I/O
+	SYSCLK_Init ();                     // Initialize Oscillator
+	UART0_Init();
+	Timer0_Init ();                  //   1ms定时器
+
+	adc_flag=0;
+
+	initHIDkeybuf();
 
 	ADC0_Init();
-	bl_vcc_ctrl	=	bl_on;/// /1为关闭蓝牙电源，0为开启
-	EA = 1;
 
+	SedDevOut();
 
 	while(1)
 	{
@@ -202,7 +190,7 @@ void main (void)
 		if(poweroff_flag)
 		{
 			poweroff_flag=0;
-			vcc_ctrl=vcc_off;//总电源关闭
+			vcc_ctrl=SysPow_OFF;//总电源关闭
 		}
 
 		if(adc_flag)
