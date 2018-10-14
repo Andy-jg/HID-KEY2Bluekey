@@ -1,5 +1,14 @@
 //-----------------------------------------------------------------------------
 // Includes
+//  work flow 
+//  key board send key value 
+//  like   if P Pressed .
+//  then  int to uart   and  recv msg.then 
+// in main fun send the hid value flow.
+//    if have value need to send then rev the key 
+//   set send int and  send  continuously the hid value . send over back to 
+//   main 10ms   the recv buf dont need so much because  wo key dont press so fast ..10 ms  just one key that is ok 
+//   if 10 ms have 5keys . that is terror.
 //-----------------------------------------------------------------------------
 
 #include <c8051f330.h>                 // SFR declarations
